@@ -229,8 +229,11 @@ void Rocket::activeBottomBooster() {
 }
 
 void Rocket::applyTorque(sf::Vector2f force, sf::Vector2f global_dist) {
-  float rx = global_dist.x - rocket_prop.r_cm.x; // r_cm precisa ser Global
-  float ry = global_dist.y - rocket_prop.r_cm.y;
+  sf::Vector2f global_cm = getTransform().transformPoint(rocket_prop.r_cm);
+
+  float rx = global_dist.x - global_cm.x;
+  float ry = global_dist.y - global_cm.y;
+
   float t = rx * force.y - ry * force.x;
 
   this->torque += t;
