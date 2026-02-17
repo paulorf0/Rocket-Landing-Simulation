@@ -17,7 +17,6 @@ Rocket::Rocket(int rocket_width, int body_height, int nose_height)
 
   ;
 
-  mod_D = 0; // Aerodynamic Drag
   area = M_PI * rocket_width * rocket_width / 4.f;
 
   vel = {0, 0};
@@ -71,9 +70,15 @@ void Rocket::setBody(const sf::Color &color) {
   body.setFillColor(color);
 }
 
-void Rocket::calculateDragForce() {
+void Rocket::applyDragForce() {
   const auto mod_vel = vector_mod(vel);
-  mod_D = (1.f / 2.f) * (AIR_DENSITY * mod_vel * mod_vel * area);
+  const auto mod_D = (1.f / 2.f) * (AIR_DENSITY * mod_vel * mod_vel * area);
+  const auto f_angle = angle;
+
+  const auto fx = mod_D * std::cos(f_angle);
+  const auto fy = mod_D * std::sin(f_angle);
+
+  applyForce({fx, fy});
 }
 
 void Rocket::configureSideBooster(const float gamma, const float minAe,
@@ -178,13 +183,15 @@ void Rocket::activeLeftBooster() {
 
   const auto fx =
       f * std::cos(f_angle); // The left-hand propeller pushes to the right.
-  const auto fy = -f * std::sin(f_angle);
+  const auto fy = f * std::sin(f_angle);
 
   applyForce({static_cast<float>(fx), static_cast<float>(fy)});
 
-  const auto dist = left_thruster.getPosition().y - rocket_prop.r_cm.y;
+  sf::Vector2f thrusterPosGlobal =
+      getTransform().transformPoint(left_thruster.getPosition());
 
-  applyTorque(f, dist);
+  applyTorque({static_cast<float>(fx), static_cast<float>(fy)},
+              thrusterPosGlobal);
 }
 
 void Rocket::activeRightBooster() {
@@ -192,19 +199,21 @@ void Rocket::activeRightBooster() {
   const auto f_angle = angle + PI / 2.;
 
   const auto fx =
-      f * std::cos(f_angle); // The right-hand propeller pushes to the left.
-  const auto fy = -f * std::sin(f_angle);
+      -f * std::cos(f_angle); // The right-hand propeller pushes to the left.
+  const auto fy = f * std::sin(f_angle);
 
   applyForce({static_cast<float>(fx), static_cast<float>(fy)});
 
-  const auto dist = right_thruster.getPosition().y - rocket_prop.r_cm.y;
+  sf::Vector2f thrusterPosGlobal =
+      getTransform().transformPoint(left_thruster.getPosition());
 
-  applyTorque(f, dist);
+  applyTorque({static_cast<float>(fx), static_cast<float>(fy)},
+              thrusterPosGlobal);
 }
 
 void Rocket::activeBottomBooster() {
   const auto f = bottom.getForce();
-  const auto f_angle = angle + PI / 2.;
+  const auto f_angle = angle;
 
   const auto fx =
       f * std::cos(f_angle); // The right-hand propeller pushes to the left.
@@ -212,7 +221,47 @@ void Rocket::activeBottomBooster() {
 
   applyForce({static_cast<float>(fx), static_cast<float>(fy)});
 
-  const auto dist = right_thruster.getPosition().x - rocket_prop.r_cm.x;
+  sf::Vector2f thrusterPosGlobal =
+      getTransform().transformPoint(left_thruster.getPosition());
 
-  applyTorque(f, dist);
+  applyTorque({static_cast<float>(fx), static_cast<float>(fy)},
+              thrusterPosGlobal);
+}
+
+void Rocket::applyTorque(sf::Vector2f force, sf::Vector2f global_dist) {
+  float rx = global_dist.x - rocket_prop.r_cm.x; // r_cm precisa ser Global
+  float ry = global_dist.y - rocket_prop.r_cm.y;
+  float t = rx * force.y - ry * force.x;
+
+  this->torque += t;
+}
+
+void Rocket::updateRotation(float dt) {
+  float alpha = (rocket_prop.I_cm > 1e-6f) ? (torque / rocket_prop.I_cm) : 0.f;
+
+  angVel += alpha * dt;
+  angle += angVel * dt;
+
+  setRotation(angle * RADIANS_TO_DEGREES);
+}
+
+void Rocket::updatePosition(float dt) {
+  sf::Vector2f a = force / rocket_prop.m;
+
+  vel += a * dt;
+  pos += vel * dt;
+
+  setPosition(pos);
+}
+
+void Rocket::update(float dt) {
+  const sf::Vector2f gravity = {0., 9.81};
+  applyDragForce();
+  applyForce(gravity * rocket_prop.m);
+
+  updatePosition(dt);
+  updateRotation(dt);
+
+  resetForce();
+  resetTorque();
 }

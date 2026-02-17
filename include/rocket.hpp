@@ -38,31 +38,14 @@ public:
   inline void applyForce(sf::Vector2f force) { this->force += force; }
   inline void resetForce() { force = {0.f, 0.f}; }
 
-  inline void applyTorque(float force, float dist) {
-    this->torque += force * dist;
-  }
+  void applyTorque(sf::Vector2f force, sf::Vector2f global_dist);
   inline void resetTorque() { torque = 0.f; }
 
-  void updatePosition(float dt) {
-    sf::Vector2f a = force / rocket_prop.m;
+  void update(float dt);
+  void updatePosition(float dt);
+  void updateRotation(float dt);
 
-    vel += a * dt;
-    pos += vel * dt;
-
-    setPosition(pos);
-  }
-
-  void updateRotation(float dt) {
-    float alpha =
-        (rocket_prop.I_cm > 1e-6f) ? (torque / rocket_prop.I_cm) : 0.f;
-
-    angVel += alpha * dt;
-    angle += angVel * dt;
-
-    setRotation(angle * RADIANS_TO_DEGREES);
-  }
-
-  void calculateDragForce();
+  void applyDragForce();
 
   void activeLeftBooster();
   void activeRightBooster();
@@ -91,8 +74,7 @@ private:
   struct RocketBooster right;
   struct RocketBooster bottom;
 
-  float mod_D; // Aerodynamic Drag
-  float area;  // The bigger area at rocket
+  float area; // The bigger area at rocket
 
   sf::Vector2f vel;
   sf::Vector2f pos;
