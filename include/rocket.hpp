@@ -8,6 +8,7 @@
 #include <SFML/Graphics/Transformable.hpp>
 #include <SFML/System/Vector2.hpp>
 #include <cmath>
+#include <deque>
 #include <iostream>
 #include <vector>
 
@@ -32,7 +33,6 @@ struct MassProps {
 };
 
 class Rocket : public sf::Transformable, public sf::Drawable {
-
 public:
   Rocket(int rocket_width, int body_height, int nose_height);
 
@@ -45,6 +45,10 @@ public:
 
   void applyTorque(sf::Vector2f force, sf::Vector2f global_dist);
   inline void resetTorque() { torque = 0.f; }
+
+  void applyPos(sf::Vector2f pos) { this->pos += pos; }
+  void applyVel(const sf::Vector2f &vel) { this->vel += vel; }
+  void applyAngVel(const float angVel) { this->angVel += angVel; }
 
   void update(float dt);
   void updatePosition(float dt);
@@ -63,9 +67,15 @@ public:
 
   void consumeFuelMass(float dt);
 
-  void configureSideBooster(const float gamma, const float minAe,
-                            const float minAt, const float maxAe,
-                            const float maxAt);
+  void configureSideBooster(const float gamma, const float minSideAe,
+                            const float minSideAt, const float maxSideAe,
+                            const float maxSideAt, const float minBottomAe,
+                            const float minBottomAt, const float maxBottomAe,
+
+                            const float maxBottomAt);
+
+  void setAngVel(float angVel) { this->angVel = angVel; }
+
   void setNose(const sf::Color &color);
   void setBody(const sf::Color &color);
   void setSideThrusters(const int &y, const int &width, const int &height,
@@ -89,7 +99,20 @@ public:
   void setBoosterFuel(double T0, double M);
   void setBoosterOutputs(float leftOut, float rightOut, float bottomOut);
 
-  const MassProps &massProps() const { return rocket_prop; } // debug
+  sf::FloatRect getBounds();
+  const auto getCmWorld() {
+    return getTransform().transformPoint(rocket_prop.r_cm);
+  }
+
+  const auto &getVel() { return vel; }
+  const auto &getAngularVel() { return angVel; }
+  const auto &getMass() { return rocket_prop.m; }
+  const auto &getInertia() { return rocket_prop.I_cm; }
+
+  const auto getLenVel() {
+    const auto len = vector_len_sqr(vel);
+    return len;
+  }
 
 private:
   struct Newton_Raphson solver;

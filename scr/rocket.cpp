@@ -17,8 +17,6 @@ Rocket::Rocket(int rocket_width, int body_height, int nose_height)
 
   resetForce();
 
-  ;
-
   rocket_prop.m = 0;
   rocket_prop.I_cm = 0;
   rocket_prop.r_cm = {0, 0};
@@ -88,38 +86,39 @@ void Rocket::applyDragForce() {
   applyForce(dragDir * mag_drag);
 }
 
-void Rocket::configureSideBooster(const float gamma, const float minAe,
-                                  const float minAt, const float maxAe,
-                                  const float maxAt) {
+void Rocket::configureSideBooster(
+    const float gamma, const float minSideAe, const float minSideAt,
+    const float maxSideAe, const float maxSideAt, const float minBottomAe,
+    const float minBottomAt, const float maxBottomAe, const float maxBottomAt) {
 
   left.curr_output = 0; // The player can be control it.
   left.gamma = gamma;
-  left.minAe = minAe;
-  left.maxAe = maxAe;
-  left.minAt = minAt;
-  left.maxAt = maxAt;
-  left.curr_Ae = (minAe + maxAe) / 2.;
-  left.curr_At = (minAt + maxAt) / 2.;
+  left.minAe = minSideAe;
+  left.maxAe = maxSideAe;
+  left.minAt = minSideAt;
+  left.maxAt = maxSideAt;
+  left.curr_Ae = (minSideAe + maxSideAe) / 2.;
+  left.curr_At = (minSideAt + maxSideAt) / 2.;
   left.prev_Ae = 0.;
 
   right.curr_output = 0; // The player can be control it.
   right.gamma = gamma;
-  right.minAe = minAe;
-  right.maxAe = maxAe;
-  right.minAt = minAt;
-  right.maxAt = maxAt;
-  right.curr_Ae = (minAe + maxAe) / 2.;
-  right.curr_At = (minAt + maxAt) / 2.;
+  right.minAe = minSideAe;
+  right.maxAe = maxSideAe;
+  right.minAt = minSideAt;
+  right.maxAt = maxSideAt;
+  right.curr_Ae = (minSideAe + maxSideAe) / 2.;
+  right.curr_At = (minSideAt + maxSideAt) / 2.;
   right.prev_Ae = 0.;
 
   bottom.curr_output = 0; // The player can be control it.
   bottom.gamma = gamma;
-  bottom.minAe = minAe;
-  bottom.maxAe = maxAe;
-  bottom.minAt = minAt;
-  bottom.maxAt = maxAt;
-  bottom.curr_Ae = (minAe + maxAe) / 2.;
-  bottom.curr_At = (minAt + maxAt) / 2.;
+  bottom.minAe = minBottomAe;
+  bottom.maxAe = maxBottomAe;
+  bottom.minAt = minBottomAt;
+  bottom.maxAt = maxBottomAt;
+  bottom.curr_Ae = (minBottomAe + maxBottomAe) / 2.;
+  bottom.curr_At = (minBottomAt + maxBottomAt) / 2.;
   bottom.prev_Ae = 0.;
 
   left.initBooster();
@@ -359,6 +358,10 @@ void Rocket::update(float dt) {
     resetForce();
     resetTorque();
   }
+}
+
+sf::FloatRect Rocket::getBounds() {
+  return getTransform().transformRect(body.getGlobalBounds());
 }
 
 void Rocket::setBoosterFuel(double T0, double M) {
