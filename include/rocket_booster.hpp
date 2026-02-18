@@ -5,6 +5,7 @@
 #include "numeric_solver.hpp"
 
 #include <cmath>
+#include <iostream>
 
 /*
         This struct control the Rocket Booster.
@@ -23,22 +24,23 @@ struct RocketBooster {
   // TODO: Ae and At can be modified by the player.
 
   // Constants.
-  float delay = 0.2;
+  float delay = 0.6;
 
   // Defined By Player.
-  float output;
+  float target_output;
+  float curr_output;
   float gamma;
 
   float minAe, minAt;
   float maxAe, maxAt;
 
-  float target_Ae, target_At;
   float curr_Ae;
   float curr_At;
   float prev_Ae;
 
   // Defined By Equations
   float Mach;
+  float last_know_Mach;
   float Pe;       // Exit Pressure
   float effecVel; // Effective Velocity
   float Vexit;    // Exit Velocity
@@ -49,58 +51,38 @@ struct RocketBooster {
 
   void initBooster() {
     fuelProperties.calculateR();
+    target_output = curr_output;
 
-    target_At = curr_At;
-    target_Ae = curr_Ae;
+    last_know_Mach = 0.;
+    last_know_Mach = 0.;
+    Mach = 0.;
+    Vexit = 0.;
+    Pe = AIR_PRESSURE;
   }
 
   float getForce() {
     updateVariables();
 
-    return output * effecVel + (Pe - AIR_PRESSURE) * curr_Ae;
+    const auto f = curr_output * Vexit + (Pe - AIR_PRESSURE) * curr_Ae;
+
+    return f * PPM;
   }
 
-  void update(float dt) {
-    updateThroatArea(dt);
-    updateNozzleArea(dt);
-  }
+  void update(float dt) { updateOutput(dt); }
 
-  void updateThroatArea(float dt) {
-    if (std::abs(curr_At - target_At) < 0.0001f) {
-      curr_At = target_At;
+  void updateOutput(float dt) {
+    if (std::abs(curr_output - target_output) < 0.0001f) {
+      curr_output = target_output;
       return;
     }
 
-    curr_At += (target_At - curr_At) * delay * dt;
+    curr_output += (target_output - curr_output) * delay * dt;
   }
 
-  void updateNozzleArea(float dt) {
-    if (std::abs(curr_Ae - target_Ae) < 0.0001f) {
-      curr_Ae = target_Ae;
-      return;
-    }
-
-    curr_Ae += (target_At - curr_Ae) * delay * dt;
-  }
-
-  void controlOutput(float dOut) { output += dOut; }
-
-  void controlNozzleArea(float dA) {
-    target_Ae += dA;
-
-    if (target_Ae < minAe)
-      target_Ae = minAe;
-    if (target_Ae > maxAe)
-      target_Ae = maxAe;
-  }
-
-  void controlThroatArea(float dA) {
-    target_At += dA;
-
-    if (target_At < minAt)
-      target_At = minAt;
-    if (target_At > maxAt)
-      target_At = maxAt;
+  void controlOutput(float dOut) {
+    target_output += dOut;
+    if (target_output < 0)
+      target_output = 0;
   }
 
   void updateVariables() {
@@ -108,7 +90,7 @@ struct RocketBooster {
     calculateExitPressure();
     calculateTe();
     calculateVexit();
-    calculateEffecVel();
+    // calculateEffecVel();
   }
 
   void calculateMach() {
@@ -122,19 +104,25 @@ struct RocketBooster {
     const auto expoent = (gamma + 1) / (2.f * (gamma - 1));
 
     const auto f = [&](double M) -> double {
-      return (t2 * std::pow(M, expoent + 2.f) + std::pow(M, expoent) -
+      double m_abs = std::abs(M);
+      return (t2 * std::pow(m_abs, expoent + 2.f) + std::pow(m_abs, expoent) -
               std::pow(epsilon, expoent) / t1);
     };
 
     const auto df = [&](double M) -> double {
-      return t2 * (expoent + 1) * std::pow(M, expoent + 1.f) +
-             expoent * std::pow(M, expoent - 1);
+      double m_abs = std::abs(M);
+      return t2 * (expoent + 1) * std::pow(m_abs, expoent + 1.f) +
+             expoent * std::pow(m_abs, expoent - 1);
     };
 
-    solver.setPrecision(0.001);
+    solver.setPrecision(0.001f);
     solver.setFunc(f, df);
 
-    const double x0 = 0.;
+    auto x0 = 2;
+    if (last_know_Mach > 0.0001f) {
+      x0 = last_know_Mach;
+    }
+
     Mach = solver.solve(x0);
   }
 
@@ -148,7 +136,8 @@ struct RocketBooster {
 
     // Approximate pc = p0 (atmosphere)
 
-    Pe = AIR_PRESSURE * std::pow(1. + t1 * Mach * Mach, expoent);
+    double P_chamber = AIR_PRESSURE * 20.0;
+    Pe = P_chamber * std::pow(1. + t1 * Mach * Mach, expoent);
   }
 
   void calculateTe() {
@@ -169,8 +158,8 @@ struct RocketBooster {
     Vexit = Mach * std::sqrt(gamma * fuelProperties.R * Te);
   }
 
-  void calculateEffecVel() {
-    const double diff = Pe - AIR_PRESSURE;
-    effecVel = Vexit + diff * curr_Ae / output;
-  }
+  // void calculateEffecVel() {
+  //   const double diff = Pe - AIR_PRESSURE;
+  //   effecVel = Vexit + diff * curr_Ae / output;
+  // }
 };

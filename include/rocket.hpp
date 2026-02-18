@@ -8,6 +8,7 @@
 #include <SFML/Graphics/Transformable.hpp>
 #include <SFML/System/Vector2.hpp>
 #include <cmath>
+#include <iostream>
 #include <vector>
 
 #include "constants.hpp"
@@ -34,6 +35,10 @@ class Rocket : public sf::Transformable, public sf::Drawable {
 
 public:
   Rocket(int rocket_width, int body_height, int nose_height);
+
+  std::string getStatus() const;
+
+  void setInitialPosition(float x, float y);
 
   inline void applyForce(sf::Vector2f force) { this->force += force; }
   inline void resetForce() { force = {0.f, 0.f}; }
@@ -68,6 +73,24 @@ public:
   void setBottomThrusters(const int &x, const int &width, const int &height,
                           const sf::Color &color);
 
+  void updateBoosters(float dt);
+
+  void controlLeftOutput(float dOut);
+  void controlRightOutput(float dOut);
+  void controlBottomOutput(float dOut);
+
+  void controlLeftNozzleArea(float dA);
+  void controlRightNozzleArea(float dA);
+  void controlBottomNozzleArea(float dA);
+
+  void controlLeftThroatArea(float dA);
+  void controlRightThroatArea(float dA);
+  void controlBottomThroatArea(float dA);
+  void setBoosterFuel(double T0, double M);
+  void setBoosterOutputs(float leftOut, float rightOut, float bottomOut);
+
+  const MassProps &massProps() const { return rocket_prop; } // debug
+
 private:
   struct Newton_Raphson solver;
   struct RocketBooster left;
@@ -81,6 +104,8 @@ private:
   sf::Vector2f acc;
   sf::Vector2f pos_prev;
   sf::Vector2f force;
+  // TODO: All functions that use the angle need be fixed. Because the angle =
+  // 0 make the rocket point to up.
   float angle; // angle = 0 radians (x direction, to right)
   float torque;
   float angVel;
@@ -112,6 +137,6 @@ private:
   }
 
   inline float vector_len_sqr(const sf::Vector2f vec) {
-    return std::sqrt(vec.x * vec.x + vec.y * vec.y);
+    return vec.x * vec.x + vec.y * vec.y;
   }
 };

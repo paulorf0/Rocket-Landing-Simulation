@@ -4,6 +4,8 @@
 #include <SFML/System/Vector2.hpp>
 #include <SFML/System/Vector3.hpp>
 #include <cmath>
+#include <sstream>
+#include <string>
 
 // output_* = kg / s
 Rocket::Rocket(int rocket_width, int body_height, int nose_height)
@@ -16,6 +18,10 @@ Rocket::Rocket(int rocket_width, int body_height, int nose_height)
   resetForce();
 
   ;
+
+  rocket_prop.m = 0;
+  rocket_prop.I_cm = 0;
+  rocket_prop.r_cm = {0, 0};
 
   area = M_PI * rocket_width * rocket_width / 4.f;
 
@@ -48,7 +54,6 @@ void Rocket::setBottomThrusters(const int &x, const int &width,
   bottom_thruster = sf::RectangleShape(
       {static_cast<float>(width), static_cast<float>(height)});
   bottom_thruster.setPosition({1.f * x, body_height * 1.f});
-
   bottom_thruster.setFillColor(color);
 }
 
@@ -72,19 +77,22 @@ void Rocket::setBody(const sf::Color &color) {
 
 void Rocket::applyDragForce() {
   const auto mod_vel = vector_mod(vel);
-  const auto mod_D = (1.f / 2.f) * (AIR_DENSITY * mod_vel * mod_vel * area);
-  const auto f_angle = angle;
+  float v_mod = vector_mod(vel);
+  if (v_mod < 0.001f)
+    return;
 
-  const auto fx = mod_D * std::cos(f_angle);
-  const auto fy = mod_D * std::sin(f_angle);
+  const auto mag_drag = 0.5f * AIR_DENSITY * mod_vel * mod_vel * area;
 
-  applyForce({fx, fy});
+  const sf::Vector2f dragDir = -vel / v_mod;
+
+  applyForce(dragDir * mag_drag);
 }
 
 void Rocket::configureSideBooster(const float gamma, const float minAe,
                                   const float minAt, const float maxAe,
                                   const float maxAt) {
-  left.output = 0; // The player can be control it.
+
+  left.curr_output = 0; // The player can be control it.
   left.gamma = gamma;
   left.minAe = minAe;
   left.maxAe = maxAe;
@@ -94,7 +102,7 @@ void Rocket::configureSideBooster(const float gamma, const float minAe,
   left.curr_At = (minAt + maxAt) / 2.;
   left.prev_Ae = 0.;
 
-  right.output = 0; // The player can be control it.
+  right.curr_output = 0; // The player can be control it.
   right.gamma = gamma;
   right.minAe = minAe;
   right.maxAe = maxAe;
@@ -104,7 +112,7 @@ void Rocket::configureSideBooster(const float gamma, const float minAe,
   right.curr_At = (minAt + maxAt) / 2.;
   right.prev_Ae = 0.;
 
-  bottom.output = 0; // The player can be control it.
+  bottom.curr_output = 0; // The player can be control it.
   bottom.gamma = gamma;
   bottom.minAe = minAe;
   bottom.maxAe = maxAe;
@@ -116,6 +124,7 @@ void Rocket::configureSideBooster(const float gamma, const float minAe,
 
   left.initBooster();
   right.initBooster();
+  bottom.initBooster();
 }
 
 void Rocket::calculateInertia() {
@@ -147,6 +156,8 @@ void Rocket::calculateCm() {
 
   cm /= rocket_prop.m;
   rocket_prop.r_cm = cm;
+
+  setOrigin(cm);
 }
 
 void Rocket::addComponent(struct MassComponent comp) {
@@ -162,9 +173,12 @@ void Rocket::updateCmAndInertia() {
 }
 
 void Rocket::consumeFuelMass(float dt) {
-  const auto flow_rate_left = left.output;
-  const auto flow_rate_right = right.output;
-  const auto flow_rate_bottom = bottom.output;
+  if (components.empty())
+    return;
+
+  const auto flow_rate_left = left.curr_output;
+  const auto flow_rate_right = right.curr_output;
+  const auto flow_rate_bottom = bottom.curr_output;
 
   const auto total = flow_rate_left + flow_rate_right + flow_rate_bottom;
 
@@ -174,10 +188,18 @@ void Rocket::consumeFuelMass(float dt) {
   const auto total_mass = total * dt;
 
   components.back().m -= total_mass;
+  rocket_prop.m -= total_mass;
+
+  if (components.back().m < 0.f)
+    components.back().m = 0.f;
+
   updateCmAndInertia();
 }
 
 void Rocket::activeLeftBooster() {
+  if (components.back().m <= 0)
+    return;
+
   const auto f = left.getForce();
   const auto f_angle = angle + PI / 2.;
 
@@ -195,34 +217,38 @@ void Rocket::activeLeftBooster() {
 }
 
 void Rocket::activeRightBooster() {
+  if (components.back().m <= 0)
+    return;
+
   const auto f = right.getForce();
   const auto f_angle = angle + PI / 2.;
 
   const auto fx =
-      -f * std::cos(f_angle); // The right-hand propeller pushes to the left.
+      f * std::cos(-f_angle); // The right-hand propeller pushes to the left.
   const auto fy = f * std::sin(f_angle);
 
   applyForce({static_cast<float>(fx), static_cast<float>(fy)});
 
   sf::Vector2f thrusterPosGlobal =
-      getTransform().transformPoint(left_thruster.getPosition());
+      getTransform().transformPoint(right_thruster.getPosition());
 
   applyTorque({static_cast<float>(fx), static_cast<float>(fy)},
               thrusterPosGlobal);
 }
 
 void Rocket::activeBottomBooster() {
-  const auto f = bottom.getForce();
-  const auto f_angle = angle;
+  if (components.back().m <= 0)
+    return;
 
-  const auto fx =
-      f * std::cos(f_angle); // The right-hand propeller pushes to the left.
-  const auto fy = -f * std::sin(f_angle);
+  const auto f = bottom.getForce();
+
+  const auto fx = f * std::sin(angle);
+  const auto fy = -f * std::cos(angle);
 
   applyForce({static_cast<float>(fx), static_cast<float>(fy)});
 
-  sf::Vector2f thrusterPosGlobal =
-      getTransform().transformPoint(left_thruster.getPosition());
+  sf::Vector2f thrusterPosGlobal = getTransform().transformPoint(
+      bottom_thruster.getPosition() + bottom_thruster.getSize() / 2.f);
 
   applyTorque({static_cast<float>(fx), static_cast<float>(fy)},
               thrusterPosGlobal);
@@ -249,22 +275,123 @@ void Rocket::updateRotation(float dt) {
 }
 
 void Rocket::updatePosition(float dt) {
+  if (!(std::isfinite(rocket_prop.m)) || rocket_prop.m <= 1e-6f)
+    return;
+  if (!std::isfinite(force.x) || !std::isfinite(force.y))
+    return;
+
   sf::Vector2f a = force / rocket_prop.m;
 
   vel += a * dt;
   pos += vel * dt;
 
+  if (!std::isfinite(pos.x) || !std::isfinite(pos.y) || !std::isfinite(vel.x) ||
+      !std::isfinite(vel.y)) {
+    pos = {0.f, 0.f};
+    vel = {0.f, 0.f};
+  }
+
   setPosition(pos);
 }
 
+std::string get_string_vec(const sf::Vector2f &vec) {
+  ostringstream os;
+  os << "(" << vec.x << ", " << vec.y << "\n";
+  return os.str();
+}
+
+std::string Rocket::getStatus() const {
+  std::stringstream ss;
+  ss << std::fixed << std::setprecision(2); // Fixa em 2 casas decimais
+
+  ss << "===== ROCKET TELEMETRY =====\n";
+
+  // --- Física Básica ---
+  ss << "Position: (" << pos.x << ", " << pos.y << ")\n";
+  ss << "Velocity: (" << vel.x << ", " << vel.y << ")\n";
+  // Converte radianos para graus para facilitar leitura
+  ss << "Angle:    " << angle * RADIANS_TO_DEGREES << " deg\n";
+  ss << "Net Force:(" << force.x << ", " << force.y << ")\n";
+
+  ss << "\n--- MASS & BALANCE ---\n";
+  ss << "Total Mass: " << rocket_prop.m << " kg\n";
+
+  // Assumindo que o tanque é o último componente (padrão do seu código)
+  if (!components.empty()) {
+    ss << "Fuel Mass:  " << components.back().m << " kg\n";
+  } else {
+    ss << "Fuel Mass:  N/A\n";
+  }
+
+  // Centro de Massa
+  ss << "CM Pos:     (" << rocket_prop.r_cm.x << ", " << rocket_prop.r_cm.y
+     << ")\n";
+
+  ss << "\n--- ENGINE OUTPUT (kg/s) ---\n";
+  // Mostra o valor Atual (Real) e o Alvo (Comando)
+  ss << "Main (Bottom): " << bottom.curr_output
+     << " (Target: " << bottom.target_output << ")\n";
+  ss << "Left RCS:      " << left.curr_output
+     << " (Target: " << left.target_output << ")\n";
+  ss << "Right RCS:     " << right.curr_output
+     << " (Target: " << right.target_output << ")\n";
+
+  return ss.str();
+}
+
 void Rocket::update(float dt) {
-  const sf::Vector2f gravity = {0., 9.81};
-  applyDragForce();
-  applyForce(gravity * rocket_prop.m);
 
-  updatePosition(dt);
-  updateRotation(dt);
+  if (!std::isfinite(dt) || dt <= 0.f)
+    return;
+  if (dt > dt)
+    dt = dt;
 
-  resetForce();
-  resetTorque();
+  const auto SUBSTEPS = 1;
+  const float h = dt / static_cast<float>(SUBSTEPS);
+
+  for (int i = 0; i < SUBSTEPS; ++i) {
+    applyDragForce();
+    applyForce(GRAVITY * rocket_prop.m);
+
+    updatePosition(h);
+    updateRotation(h);
+
+    resetForce();
+    resetTorque();
+  }
+}
+
+void Rocket::setBoosterFuel(double T0, double M) {
+  left.fuelProperties.T0 = T0;
+  left.fuelProperties.M = M;
+  left.fuelProperties.calculateR();
+
+  right.fuelProperties.T0 = T0;
+  right.fuelProperties.M = M;
+  right.fuelProperties.calculateR();
+
+  bottom.fuelProperties.T0 = T0;
+  bottom.fuelProperties.M = M;
+  bottom.fuelProperties.calculateR();
+}
+
+void Rocket::setBoosterOutputs(float leftOut, float rightOut, float bottomOut) {
+  left.curr_output = leftOut;
+  right.curr_output = rightOut;
+  bottom.curr_output = bottomOut;
+}
+
+void Rocket::updateBoosters(float dt) {
+  left.update(dt);
+  right.update(dt);
+  bottom.update(dt);
+}
+
+void Rocket::controlLeftOutput(float dOut) { left.controlOutput(dOut); }
+void Rocket::controlRightOutput(float dOut) { right.controlOutput(dOut); }
+void Rocket::controlBottomOutput(float dOut) { bottom.controlOutput(dOut); }
+
+void Rocket::setInitialPosition(float x, float y) {
+  pos = {x, y};
+  setPosition(x, y);
 }

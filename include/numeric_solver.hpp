@@ -20,11 +20,25 @@ struct Newton_Raphson {
   }
 
   double solve(double x) {
+    if (std::abs(x) < 1e-5)
+      x = 2.0;
+
     double h = func(x) / derivFunc(x);
+
     while (abs(h) >= EPSILON) {
-      h = func(x) / derivFunc(x);
+      double df = derivFunc(x);
+
+      if (std::abs(df) < 1e-9) {
+        x += 0.1;
+        df = derivFunc(x);
+      }
+
+      h = func(x) / df;
       x = x - h;
     }
+
+    if (std::isnan(x) || std::isinf(x))
+      return 1.0;
 
     return x;
   }
